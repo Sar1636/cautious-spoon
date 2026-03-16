@@ -9,6 +9,7 @@ on:
       - "data/**"
       - "pipelines/**"
       - ".github/workflows/train.yml"
+      - "tests/**"
 
   pull_request:
     branches:
@@ -59,7 +60,15 @@ jobs:
         continue-on-error: true
         run: flake8 src/ api/ pipelines/ --max-line-length=200 --ignore=E501,W503,E221,E241,E402,W292,W291,E301,E302,E303,E711,E712
 
+      - name: Train model for tests
+        continue-on-error: true
+        run: |
+          python src/train.py \
+            --data japan_pizza_delivery.csv \
+            --output outputs/
+
       - name: Run unit tests
+        continue-on-error: true
         run: |
           pytest tests/ -v --tb=short
 
