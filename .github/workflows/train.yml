@@ -209,6 +209,7 @@ env:
   MODEL_NAME: "edt-model-japan"
 
 jobs:
+  # ── Job 1: Lint & Unit Tests ──────────────────────────────────────────
   test:
     name: Lint & Unit Tests
     runs-on: ubuntu-latest
@@ -230,10 +231,7 @@ jobs:
 
       - name: Lint with flake8
         continue-on-error: true
-        run: |
-          flake8 src/ api/ pipelines/ \
-            --max-line-length=200 \
-            --ignore=E501,W503,E221,E241,E402,W292,W291,E301,E302,E303,E711,E712
+        run: flake8 src/ api/ pipelines/ --max-line-length=200 --ignore=E501,W503,E221,E241,E402,W292,W291,E301,E302,E303,E711,E712
 
       - name: Train model for tests
         continue-on-error: true
@@ -246,6 +244,7 @@ jobs:
         continue-on-error: true
         run: pytest tests/ -v --tb=short
 
+  # ── Job 2: Train on Azure ML ──────────────────────────────────────────
   train:
     name: Train & Register Model
     runs-on: ubuntu-latest
@@ -270,12 +269,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          allow-no-subscriptions: true
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Submit Azure ML Training Pipeline
         env:
@@ -308,6 +304,7 @@ jobs:
           path: outputs/
           retention-days: 30
 
+  # ── Job 3: Deploy API ─────────────────────────────────────────────────
   deploy:
     name: Deploy Prediction API
     runs-on: ubuntu-latest
