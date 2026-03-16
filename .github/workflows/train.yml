@@ -212,9 +212,7 @@ env:
   MODEL_NAME: "edt-model-japan"
 
 jobs:
-  # ─────────────────────────────────────────────
-  # Job 1 — Lint & Unit Tests
-  # ─────────────────────────────────────────────
+  # ── Job 1: Lint & Unit Tests ──────────────────────────────────────────
   test:
     name: Lint & Unit Tests
     runs-on: ubuntu-latest
@@ -237,10 +235,7 @@ jobs:
 
       - name: Run flake8 linting
         continue-on-error: true
-        run: |
-          flake8 src/ api/ pipelines/ \
-          --max-line-length=200 \
-          --ignore=E501,W503,E221,E241,E402,W292,W291,E301,E302,E303,E711,E712
+        run: flake8 src/ api/ pipelines/ --max-line-length=200 --ignore=E501,W503,E221,E241,E402,W292,W291,E301,E302,E303,E711,E712
 
       - name: Train model for tests
         continue-on-error: true
@@ -251,12 +246,9 @@ jobs:
 
       - name: Run unit tests
         continue-on-error: true
-        run: |
-          pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short
 
-  # ─────────────────────────────────────────────
-  # Job 2 — Train Model on Azure ML
-  # ─────────────────────────────────────────────
+  # ── Job 2: Train & Register Model ────────────────────────────────────
   train:
     name: Train & Register Model
     runs-on: ubuntu-latest
@@ -282,37 +274,31 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Azure authentication (Service Principal)
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Submit Azure ML Training Pipeline
         env:
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
           DATA_VERSION: ${{ github.event.inputs.data_version || '1' }}
-
         run: |
           python pipelines/submit_pipeline.py
 
       - name: Register model in Azure ML Registry
         env:
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
         run: |
           python pipelines/register_model.py \
             --model_name ${{ env.MODEL_NAME }} \
@@ -325,9 +311,7 @@ jobs:
           path: outputs/
           retention-days: 30
 
-  # ─────────────────────────────────────────────
-  # Job 3 — Deploy API
-  # ─────────────────────────────────────────────
+  # ── Job 3: Deploy API ─────────────────────────────────────────────────
   deploy:
     name: Deploy Prediction API
     runs-on: ubuntu-latest
@@ -345,12 +329,9 @@ jobs:
           path: outputs/
 
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Login to Azure Container Registry
         uses: azure/docker-login@v2
@@ -379,10 +360,4 @@ jobs:
           registry-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           registry-username: ${{ secrets.ACR_USERNAME }}
           registry-password: ${{ secrets.ACR_PASSWORD }}
-          azure-credentials: |
-            {
-              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
-            }
+          azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
