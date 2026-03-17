@@ -302,7 +302,8 @@ import time
 import argparse
 from pathlib import Path
 
-from azure.identity import ClientSecretCredential
+# from azure.identity import ClientSecretCredential
+from azure.identity import DefaultAzureCredential
 from azure.ai.ml import MLClient, command, Input, Output, dsl
 from azure.ai.ml.entities import Environment, AmlCompute, Model, Data
 from azure.ai.ml.constants import AssetTypes
@@ -352,7 +353,7 @@ def get_ml_client():
     resource_group  = os.environ.get("AZURE_RESOURCE_GROUP", "rg-tshele-5296")
     workspace_name  = os.environ.get("AZURE_ML_WORKSPACE",   "edt-ml-workspace")
 
-    credential = ClientSecretCredential(
+    credential = DefaultAzureCredential(
         tenant_id     = tenant_id,
         client_id     = client_id,
         client_secret = client_secret,
