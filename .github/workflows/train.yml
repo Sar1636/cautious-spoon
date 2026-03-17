@@ -57,17 +57,19 @@ jobs:
 
       - name: Debug secrets
         env:
-          T: ${{ secrets.AZURE_TENANT_ID }}
-          C: ${{ secrets.AZURE_CLIENT_ID }}
-          S: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          R: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          W: ${{ secrets.AZURE_ML_WORKSPACE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
         run: |
-          echo "TENANT_ID length: ${#T}"
-          echo "CLIENT_ID length: ${#C}"
-          echo "SUBSCRIPTION_ID length: ${#S}"
-          echo "RESOURCE_GROUP: $R"
-          echo "WORKSPACE: $W"
+          echo "TENANT_ID length:       ${#AZURE_TENANT_ID}"
+          echo "CLIENT_ID length:       ${#AZURE_CLIENT_ID}"
+          echo "CLIENT_SECRET length:   ${#AZURE_CLIENT_SECRET}"
+          echo "SUBSCRIPTION_ID length: ${#AZURE_SUBSCRIPTION_ID}"
+          echo "RESOURCE_GROUP:         $AZURE_RESOURCE_GROUP"
+          echo "WORKSPACE:              $AZURE_ML_WORKSPACE"
 
       - name: Submit Azure ML Training
         env:
