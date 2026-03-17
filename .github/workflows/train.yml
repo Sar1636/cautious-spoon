@@ -35,70 +35,113 @@ jobs:
   # ─────────────────────────────
   # Job 2: Train
   # ─────────────────────────────
-  train:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
+  # train:
+  #   runs-on: ubuntu-latest
+  #   needs: test
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
 
-      - run: pip install -r requirements.txt
+  #     - run: pip install -r requirements.txt
 
-      - name: Login to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+  #     - name: Login to Azure
+  #       uses: azure/login@v1
+  #       with:
+  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Verify Azure login
-        run: az account show
+  #     - name: Verify Azure login
+  #       run: az account show
 
-      - name: Debug secrets
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-        run: |
-          echo "TENANT_ID length:       ${#AZURE_TENANT_ID}"
-          echo "CLIENT_ID length:       ${#AZURE_CLIENT_ID}"
-          echo "CLIENT_SECRET length:   ${#AZURE_CLIENT_SECRET}"
-          echo "SUBSCRIPTION_ID length: ${#AZURE_SUBSCRIPTION_ID}"
-          echo "RESOURCE_GROUP:         $AZURE_RESOURCE_GROUP"
-          echo "WORKSPACE:              $AZURE_ML_WORKSPACE"
+  #     - name: Debug secrets
+  #       env:
+  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  #         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  #         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+  #       run: |
+  #         echo "TENANT_ID length:       ${#AZURE_TENANT_ID}"
+  #         echo "CLIENT_ID length:       ${#AZURE_CLIENT_ID}"
+  #         echo "CLIENT_SECRET length:   ${#AZURE_CLIENT_SECRET}"
+  #         echo "SUBSCRIPTION_ID length: ${#AZURE_SUBSCRIPTION_ID}"
+  #         echo "RESOURCE_GROUP:         $AZURE_RESOURCE_GROUP"
+  #         echo "WORKSPACE:              $AZURE_ML_WORKSPACE"
 
-      - name: Submit Azure ML Training
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-          DATA_VERSION: "1"
-        run: python pipelines/submit_pipeline.py
+  #     - name: Submit Azure ML Training
+  #       env:
+  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  #         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  #         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+  #         DATA_VERSION: "1"
+  #       run: python pipelines/submit_pipeline.py
 
-      - name: Register Model
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-        run: |
-          python pipelines/register_model.py \
-            --model_name ${{ env.MODEL_NAME }}
+  #     - name: Register Model
+  #       env:
+  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  #         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  #         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+  #       run: |
+  #         python pipelines/register_model.py \
+  #           --model_name ${{ env.MODEL_NAME }}
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: outputs
-          path: outputs/
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: outputs
+  #         path: outputs/
 
+# ─────────────────────────────
+# Job 2: Train
+# ─────────────────────────────
+train:
+  runs-on: ubuntu-latest
+  needs: test
+
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    # ✅ Azure Login using single secret
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # ✅ Verify login (keep this)
+    - name: Verify Azure login
+      run: az account show
+
+    # 🚀 Submit training pipeline
+    - name: Submit Azure ML Training
+      env:
+        DATA_VERSION: "1"
+      run: python pipelines/submit_pipeline.py
+
+    # 🚀 Register model
+    - name: Register Model
+      run: |
+        python pipelines/register_model.py \
+          --model_name ${{ env.MODEL_NAME }}
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: outputs
+        path: outputs/
   # ─────────────────────────────
   # Job 3: Deploy
   # ─────────────────────────────
