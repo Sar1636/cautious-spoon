@@ -211,6 +211,11 @@
 
 name: EDT Model Training Pipeline
 
+# ───── Add this block ─────
+permissions:
+  id-token: write
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -378,7 +383,6 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          auth-type: oidc
 
       - name: Login to ACR
         uses: azure/docker-login@v2
