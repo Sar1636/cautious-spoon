@@ -516,6 +516,12 @@ jobs:
       - name: Verify Azure login
         run: az account show
 
+      - name: Debug env vars
+        run: |
+          echo "Sub ID set: ${{ secrets.AZURE_SUBSCRIPTION_ID != '' }}"
+          echo "RG set: ${{ secrets.AZURE_RESOURCE_GROUP != '' }}"
+          echo "WS set: ${{ secrets.AZURE_ML_WORKSPACE != '' }}"
+
       - name: Submit Azure ML Training
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
