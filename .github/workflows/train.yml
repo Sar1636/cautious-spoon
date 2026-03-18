@@ -313,6 +313,135 @@
 #           ports: 8000
 #           azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
 
+# name: EDT Model Training Pipeline
+
+# on:
+#   push:
+#     branches: [main]
+#   workflow_dispatch:
+
+# env:
+#   PYTHON_VERSION: "3.10"
+#   MODEL_NAME: "edt-model-japan"
+
+# jobs:
+#   # ─────────────────────────────
+#   # Job 1: Test
+#   # ─────────────────────────────
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: ${{ env.PYTHON_VERSION }}
+
+#       - run: |
+#           pip install -r requirements.txt
+#           pip install pytest flake8
+
+#       - run: flake8 src/ api/ pipelines/ --max-line-length=200 || true
+
+#       - run: python src/train.py --data japan_pizza_delivery.csv --output outputs/ || true
+
+#       - run: pytest tests/ || true
+
+#   # ─────────────────────────────
+#   # Job 2: Train
+#   # ─────────────────────────────
+#   train:
+#     runs-on: ubuntu-latest
+#     needs: test
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: ${{ env.PYTHON_VERSION }}
+
+#       - name: Install dependencies
+#         run: pip install -r requirements.txt
+
+#       # Login to Azure using JSON secret (for CLI commands)
+#       - name: Login to Azure
+#         uses: azure/login@v1
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#       - name: Verify Azure login
+#         run: az account show
+
+#       # Submit Azure ML training pipeline
+#       - name: Submit Azure ML Training
+#         env:
+#           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#           DATA_VERSION: "1"
+#         run: python pipelines/submit_pipeline.py
+
+#       # Register trained model
+#       - name: Register Model
+#         env:
+#           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#         run: |
+#           python pipelines/register_model.py \
+#             --model_name ${{ env.MODEL_NAME }}
+
+#       # Upload outputs as artifact
+#       - uses: actions/upload-artifact@v4
+#         with:
+#           name: outputs
+#           path: outputs/
+
+#   # ─────────────────────────────
+#   # Job 3: Deploy
+#   # ─────────────────────────────
+#   deploy:
+#     runs-on: ubuntu-latest
+#     needs: train
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/download-artifact@v4
+#         with:
+#           name: outputs
+#           path: outputs/
+
+#       # Login to Azure
+#       - name: Login to Azure
+#         uses: azure/login@v1
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#       # Login to ACR
+#       - uses: azure/docker-login@v2
+#         with:
+#           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+#           username: ${{ secrets.ACR_USERNAME }}
+#           password: ${{ secrets.ACR_PASSWORD }}
+
+#       - name: Build & push Docker image
+#         run: |
+#           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:${{ github.sha }}
+#           docker build -t $IMAGE .
+#           docker push $IMAGE
+#           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+#       # Deploy container to Azure Container Instance
+#       - uses: azure/aci-deploy@v1
+#         with:
+#           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           name: edt-api
+#           image: ${{ env.IMAGE }}
+#           dns-name-label: edt-api
+#           location: japaneast
+#           ports: 8000
+#           azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
 name: EDT Model Training Pipeline
 
 on:
@@ -337,15 +466,25 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - run: |
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
           pip install -r requirements.txt
           pip install pytest flake8
 
-      - run: flake8 src/ api/ pipelines/ --max-line-length=200 || true
+      - name: Lint
+        run: flake8 src/ api/ pipelines/ --max-line-length=200
 
-      - run: python src/train.py --data japan_pizza_delivery.csv --output outputs/ || true
+      - name: Train smoke test
+        run: python src/train.py --data japan_pizza_delivery.csv --output outputs/
 
-      - run: pytest tests/ || true
+      - name: Run tests
+        run: pytest tests/
 
   # ─────────────────────────────
   # Job 2: Train
@@ -360,19 +499,23 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Login to Azure using JSON secret (for CLI commands)
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Verify Azure login
         run: az account show
 
-      # Submit Azure ML training pipeline
       - name: Submit Azure ML Training
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -381,7 +524,6 @@ jobs:
           DATA_VERSION: "1"
         run: python pipelines/submit_pipeline.py
 
-      # Register trained model
       - name: Register Model
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -391,7 +533,6 @@ jobs:
           python pipelines/register_model.py \
             --model_name ${{ env.MODEL_NAME }}
 
-      # Upload outputs as artifact
       - uses: actions/upload-artifact@v4
         with:
           name: outputs
@@ -411,14 +552,13 @@ jobs:
           name: outputs
           path: outputs/
 
-      # Login to Azure
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Login to ACR
-      - uses: azure/docker-login@v2
+      - name: Login to ACR
+        uses: azure/docker-login@v1
         with:
           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
@@ -427,12 +567,14 @@ jobs:
       - name: Build & push Docker image
         run: |
           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:${{ github.sha }}
-          docker build -t $IMAGE .
+          LATEST=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:latest
+          docker build -t $IMAGE -t $LATEST .
           docker push $IMAGE
+          docker push $LATEST
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
-      # Deploy container to Azure Container Instance
-      - uses: azure/aci-deploy@v1
+      - name: Deploy to Azure Container Instance
+        uses: azure/aci-deploy@v1
         with:
           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
           name: edt-api
