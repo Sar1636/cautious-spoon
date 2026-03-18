@@ -251,36 +251,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Install dependencies
-        run: |
+      - run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest flake8
 
-      - name: Run flake8 linting
+      - name: Lint
         run: |
           flake8 src/ api/ pipelines/ \
           --max-line-length=200 \
           --ignore=E501,W503,E221,E241,E402,W292,W291,E301,E302,E303,E711,E712
 
-      - name: Train model for tests
+      - name: Train test model
         run: |
           python src/train.py \
             --data japan_pizza_delivery.csv \
             --output outputs/
 
-      - name: Run unit tests
-        run: |
-          pytest tests/ -v --tb=short
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
 
   # ─────────────────────────────────────────────
   # Job 2 — Train Model on Azure ML
@@ -296,53 +292,43 @@ jobs:
       github.event_name == 'schedule'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Install dependencies
-        run: |
+      - run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Azure OIDC login
+      # ✅ FIXED Azure Login
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          auth-type: oidc
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Submit Azure ML Training Pipeline
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           DATA_VERSION: ${{ github.event.inputs.data_version || '1' }}
         run: |
           python pipelines/submit_pipeline.py
 
-      - name: Register model in Azure ML Registry
+      - name: Register model
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         run: |
           python pipelines/register_model.py \
             --model_name ${{ env.MODEL_NAME }} \
             --description "Trained from commit ${{ github.sha }}"
 
-      - name: Upload training artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: training-outputs-${{ github.run_id }}
@@ -359,39 +345,34 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download training artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: training-outputs-${{ github.run_id }}
           path: outputs/
 
-      # Azure OIDC login
+      # ✅ FIXED Azure Login
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          auth-type: oidc
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Login to Azure Container Registry
+      - name: Login to ACR
         uses: azure/docker-login@v2
         with:
           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build and Push Docker Image
+      - name: Build & Push Docker Image
         run: |
           IMAGE_TAG=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:${{ github.sha }}
           docker build --build-arg MODEL_PATH=outputs/edt_model.pkl -t $IMAGE_TAG .
           docker push $IMAGE_TAG
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
-      - name: Deploy to Azure Container Instances
+      - name: Deploy to ACI
         uses: azure/aci-deploy@v1
         with:
           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
