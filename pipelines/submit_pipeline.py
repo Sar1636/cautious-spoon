@@ -315,25 +315,28 @@ from azure.core.exceptions import AzureError, ResourceNotFoundError
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # ── ML Settings ──────────────────────────────────────────────────────
-CLUSTER_NAME  = "edt-cpu-cluster"
-CLUSTER_SIZE  = "Standard_DS3_v2"
-ENV_NAME      = "edt-training-env"
-DATA_ASSET    = "japan-pizza-delivery-data"
-DATA_VERSION  = os.environ.get("DATA_VERSION", "1")
-LOCAL_CSV     = str(PROJECT_ROOT / "japan_pizza_delivery.csv")
-MODEL_NAME    = "edt-model-japan"
-EXPERIMENT    = "edt-model-training"
-MAX_RETRIES   = 3
+CLUSTER_NAME = "edt-cpu-cluster"
+CLUSTER_SIZE = "Standard_DS3_v2"
+ENV_NAME = "edt-training-env"
+DATA_ASSET = "japan-pizza-delivery-data"
+DATA_VERSION = os.environ.get("DATA_VERSION", "1")
+LOCAL_CSV = str(PROJECT_ROOT / "japan_pizza_delivery.csv")
+MODEL_NAME = "edt-model-japan"
+EXPERIMENT = "edt-model-training"
+MAX_RETRIES = 3
 RETRY_DELAY_S = 5
+
 
 # ── Logging ──────────────────────────────────────────────────────────
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
+
 def log_section(title):
     print(f"\n{'─' * 50}", flush=True)
     print(f"  {title}", flush=True)
     print(f"{'─' * 50}", flush=True)
+
 
 # ── Retry helper ─────────────────────────────────────────────────────
 def with_retry(fn, label):
@@ -347,6 +350,7 @@ def with_retry(fn, label):
             log(f"! {label} attempt {attempt}/{MAX_RETRIES} failed — retrying in {RETRY_DELAY_S}s...")
             time.sleep(RETRY_DELAY_S)
 
+
 # ── Credential ────────────────────────────────────────────────────────
 def get_credential():
     """
@@ -356,8 +360,8 @@ def get_credential():
 
     Locally, falls back to DefaultAzureCredential (picks up az login or env vars).
     """
-    client_id  = os.environ.get("AZURE_CLIENT_ID")
-    tenant_id  = os.environ.get("AZURE_TENANT_ID")
+    client_id = os.environ.get("AZURE_CLIENT_ID")
+    tenant_id = os.environ.get("AZURE_TENANT_ID")
     token_file = os.environ.get("AZURE_FEDERATED_TOKEN_FILE")
 
     if client_id and tenant_id and token_file:
@@ -370,14 +374,15 @@ def get_credential():
     log("Auth: DefaultAzureCredential (local fallback)")
     return DefaultAzureCredential()
 
+
 # ── Azure ML Client ───────────────────────────────────────────────────
 def get_ml_client():
     log_section("Azure ML Client")
 
     required = {
         "AZURE_SUBSCRIPTION_ID": os.environ.get("AZURE_SUBSCRIPTION_ID"),
-        "AZURE_RESOURCE_GROUP":  os.environ.get("AZURE_RESOURCE_GROUP"),
-        "AZURE_ML_WORKSPACE":    os.environ.get("AZURE_ML_WORKSPACE"),
+        "AZURE_RESOURCE_GROUP": os.environ.get("AZURE_RESOURCE_GROUP"),
+        "AZURE_ML_WORKSPACE": os.environ.get("AZURE_ML_WORKSPACE"),
     }
     missing = [k for k, v in required.items() if not v]
     if missing:
@@ -390,8 +395,8 @@ def get_ml_client():
         raise ValueError(f"Missing env vars: {', '.join(missing)}")
 
     subscription_id = required["AZURE_SUBSCRIPTION_ID"]
-    resource_group  = required["AZURE_RESOURCE_GROUP"]
-    workspace_name  = required["AZURE_ML_WORKSPACE"]
+    resource_group = required["AZURE_RESOURCE_GROUP"]
+    workspace_name = required["AZURE_ML_WORKSPACE"]
 
     log(f"Subscription  : {subscription_id}")
     log(f"Resource group: {resource_group}")
@@ -410,6 +415,7 @@ def get_ml_client():
     except Exception as e:
         log(f"X Failed to connect to Azure ML: {e}")
         raise
+
 
 # ── Dataset upload ────────────────────────────────────────────────────
 def ensure_data_asset(client):
@@ -442,6 +448,7 @@ def ensure_data_asset(client):
     log(f"Dataset uploaded: {registered.name}:{registered.version}")
     return f"azureml:{registered.name}:{registered.version}"
 
+
 # ── Compute cluster ───────────────────────────────────────────────────
 def ensure_compute(client):
     log_section("Compute Cluster")
@@ -467,6 +474,7 @@ def ensure_compute(client):
     log(f"Compute created: {CLUSTER_NAME}")
     return CLUSTER_NAME
 
+
 # ── Environment ───────────────────────────────────────────────────────
 def ensure_environment(client):
     log_section("Environment")
@@ -488,6 +496,7 @@ def ensure_environment(client):
     )
     log(f"Environment ready: {registered.name}:{registered.version}")
     return f"{registered.name}:{registered.version}"
+
 
 # ── Pipeline ──────────────────────────────────────────────────────────
 def build_pipeline(data_path, compute, env):
@@ -517,12 +526,13 @@ def build_pipeline(data_path, compute, env):
 
     @dsl.pipeline(name="edt-training-pipeline", description="EDT model training pipeline")
     def pipeline(raw_data):
-        prep_step  = preprocess(raw_data=raw_data)
+        prep_step = preprocess(raw_data=raw_data)
         train_step = train(processed_data=prep_step.outputs.processed)
         return {"model": train_step.outputs.model}
 
     log("Pipeline definition built successfully")
     return pipeline(raw_data=Input(type=AssetTypes.URI_FILE, path=data_path))
+
 
 # ── Model registration ────────────────────────────────────────────────
 def register_model_after_job(client, job_name):
@@ -541,21 +551,23 @@ def register_model_after_job(client, job_name):
     )
     log(f"Model registered: {registered.name}:{registered.version}")
 
+
 # ── Args ──────────────────────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser(description="Submit EDT training pipeline to Azure ML")
     parser.add_argument("--experiment", default=EXPERIMENT, help="Experiment name")
-    parser.add_argument("--no_wait",    action="store_true",  help="Submit and exit without waiting")
+    parser.add_argument("--no_wait", action="store_true", help="Submit and exit without waiting")
     return parser.parse_args()
+
 
 # ── Main ──────────────────────────────────────────────────────────────
 def main():
     log_section("EDT Training Pipeline Submission")
-    args         = parse_args()
-    client       = get_ml_client()
-    data_path    = ensure_data_asset(client)
-    compute      = ensure_compute(client)
-    env          = ensure_environment(client)
+    args = parse_args()
+    client = get_ml_client()
+    data_path = ensure_data_asset(client)
+    compute = ensure_compute(client)
+    env = ensure_environment(client)
     pipeline_job = build_pipeline(data_path, compute, env)
 
     log_section("Submitting Pipeline")
@@ -588,6 +600,7 @@ def main():
         log(f"Pipeline failed with status: {final.status}")
         log(f"Check full logs at: {final.studio_url}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
