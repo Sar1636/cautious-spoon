@@ -94,13 +94,6 @@
 # if __name__ == "__main__":
 #     main()
 
-"""
-register_model.py
------------------
-Registers the trained model in Azure ML Model Registry.
-Uses DefaultAzureCredential (compatible with GitHub Actions).
-"""
-
 import os
 import argparse
 from azure.identity import DefaultAzureCredential
@@ -108,8 +101,6 @@ from azure.ai.ml import MLClient
 from azure.ai.ml.entities import Model
 from azure.ai.ml.constants import AssetTypes
 
-
-# ── Args ──────────────────────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", default="outputs/edt_model.pkl")
@@ -117,22 +108,13 @@ def parse_args():
     parser.add_argument("--description", default="EDT model for Japan pizza delivery")
     return parser.parse_args()
 
-
-# ── Azure ML Client ───────────────────────────────────────────────────
 def get_ml_client():
     subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID")
-    resource_group  = os.environ.get("AZURE_RESOURCE_GROUP", "rg-edt-japan")
-    workspace_name  = os.environ.get("AZURE_ML_WORKSPACE", "edt-ml-workspace")
+    resource_group  = os.environ.get("AZURE_RESOURCE_GROUP")
+    workspace_name  = os.environ.get("AZURE_ML_WORKSPACE")
 
-    if not subscription_id:
-        raise ValueError("AZURE_SUBSCRIPTION_ID is required")
-
-    print("=" * 50)
-    print("Using DefaultAzureCredential")
-    print(f"SUBSCRIPTION_ID = {subscription_id}")
-    print(f"RESOURCE_GROUP  = {resource_group}")
-    print(f"WORKSPACE_NAME  = {workspace_name}")
-    print("=" * 50)
+    if not subscription_id or not resource_group or not workspace_name:
+        raise ValueError("AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, and AZURE_ML_WORKSPACE must be set")
 
     credential = DefaultAzureCredential()
 
@@ -142,47 +124,24 @@ def get_ml_client():
         resource_group_name=resource_group,
         workspace_name=workspace_name,
     )
-
-    print(f"\nConnected: workspace={client.workspace_name}")
+    print(f"Connected: workspace={client.workspace_name}")
     return client
 
-
-# ── Main ──────────────────────────────────────────────────────────────
 def main():
     args = parse_args()
+    client = get_ml_client()
 
-    print("\nAuthenticating...")
-    ml_client = get_ml_client()
-
-    # Verify connection
-    print("\nVerifying workspace connection...")
-    ws = ml_client.workspaces.get(ml_client.workspace_name)
-    print(f"Connected to workspace : {ws.name}")
-    print(f"Resource group         : {ws.resource_group}")
-    print(f"Location               : {ws.location}")
-
-    # Register model
-    print(f"\nRegistering model from: {args.model_path}")
-
+    print(f"Registering model from: {args.model_path}")
     model = Model(
         path=args.model_path,
         name=args.model_name,
         description=args.description,
         type=AssetTypes.CUSTOM_MODEL,
-        tags={
-            "market": "japan",
-            "task": "regression",
-            "framework": "scikit-learn",
-        },
+        tags={"market": "japan", "task": "regression", "framework": "scikit-learn"},
     )
 
-    registered = ml_client.models.create_or_update(model)
-
-    print(f"\n✅ Model registered successfully!")
-    print(f"   Name    : {registered.name}")
-    print(f"   Version : {registered.version}")
-    print(f"   ID      : {registered.id}")
-
+    registered = client.models.create_or_update(model)
+    print(f"✅ Model registered: {registered.name}, version {registered.version}")
 
 if __name__ == "__main__":
     main()

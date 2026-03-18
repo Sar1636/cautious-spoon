@@ -1,3 +1,188 @@
+# name: EDT Model Training Pipeline
+
+# on:
+#   push:
+#     branches: [main]
+#   workflow_dispatch:
+
+# env:
+#   PYTHON_VERSION: "3.10"
+#   MODEL_NAME: "edt-model-japan"
+
+# jobs:
+#   # ─────────────────────────────
+#   # Job 1: Test
+#   # ─────────────────────────────
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: ${{ env.PYTHON_VERSION }}
+
+#       - run: |
+#           pip install -r requirements.txt
+#           pip install pytest flake8
+
+#       - run: flake8 src/ api/ pipelines/ --max-line-length=200 || true
+
+#       - run: python src/train.py --data japan_pizza_delivery.csv --output outputs/ || true
+
+#       - run: pytest tests/ || true
+
+# ─────────────────────────────
+# Job 2: Train
+# ─────────────────────────────
+# train:
+#   runs-on: ubuntu-latest
+#   needs: test
+#   steps:
+#     - uses: actions/checkout@v4
+
+#     - uses: actions/setup-python@v5
+#       with:
+#         python-version: ${{ env.PYTHON_VERSION }}
+
+#     - run: pip install -r requirements.txt
+
+#     - name: Login to Azure
+#       uses: azure/login@v1
+#       with:
+#         creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#     - name: Verify Azure login
+#       run: az account show
+
+#     - name: Debug secrets
+#       env:
+#         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+#         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#       run: |
+#         echo "TENANT_ID length:       ${#AZURE_TENANT_ID}"
+#         echo "CLIENT_ID length:       ${#AZURE_CLIENT_ID}"
+#         echo "CLIENT_SECRET length:   ${#AZURE_CLIENT_SECRET}"
+#         echo "SUBSCRIPTION_ID length: ${#AZURE_SUBSCRIPTION_ID}"
+#         echo "RESOURCE_GROUP:         $AZURE_RESOURCE_GROUP"
+#         echo "WORKSPACE:              $AZURE_ML_WORKSPACE"
+
+#     - name: Submit Azure ML Training
+#       env:
+#         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+#         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#         DATA_VERSION: "1"
+#       run: python pipelines/submit_pipeline.py
+
+#     - name: Register Model
+#       env:
+#         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+#         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#       run: |
+#         python pipelines/register_model.py \
+#           --model_name ${{ env.MODEL_NAME }}
+
+#     - uses: actions/upload-artifact@v4
+#       with:
+#         name: outputs
+#         path: outputs/
+
+# ─────────────────────────────
+# Job 2: Train
+# ─────────────────────────────
+# train:
+#   runs-on: ubuntu-latest
+#   needs: test
+
+#   steps:
+#     - uses: actions/checkout@v4
+
+#     - uses: actions/setup-python@v5
+#       with:
+#         python-version: ${{ env.PYTHON_VERSION }}
+
+#     - name: Install dependencies
+#       run: pip install -r requirements.txt
+
+#     # ✅ Azure Login using single secret
+#     - name: Login to Azure
+#       uses: azure/login@v1
+#       with:
+#         creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#     # ✅ Verify login (keep this)
+#     - name: Verify Azure login
+#       run: az account show
+
+#     # 🚀 Submit training pipeline
+#     - name: Submit Azure ML Training
+#       env:
+#         DATA_VERSION: "1"
+#       run: python pipelines/submit_pipeline.py
+
+#     # 🚀 Register model
+#     - name: Register Model
+#       run: |
+#         python pipelines/register_model.py \
+#           --model_name ${{ env.MODEL_NAME }}
+
+#     - uses: actions/upload-artifact@v4
+#       with:
+#         name: outputs
+#         path: outputs/
+#   # ─────────────────────────────
+#   # Job 3: Deploy
+#   # ─────────────────────────────
+#   deploy:
+#     runs-on: ubuntu-latest
+#     needs: train
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/download-artifact@v4
+#         with:
+#           name: outputs
+#           path: outputs/
+
+#       - name: Login to Azure
+#         uses: azure/login@v1
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#       - uses: azure/docker-login@v2
+#         with:
+#           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+#           username: ${{ secrets.ACR_USERNAME }}
+#           password: ${{ secrets.ACR_PASSWORD }}
+
+#       - run: |
+#           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:${{ github.sha }}
+#           docker build -t $IMAGE .
+#           docker push $IMAGE
+#           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+#       - uses: azure/aci-deploy@v1
+#         with:
+#           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           name: edt-api
+#           image: ${{ env.IMAGE }}
+#           dns-name-label: edt-api
+#           location: japaneast
+#           ports: 8000
+#           azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
 name: EDT Model Training Pipeline
 
 on:
@@ -33,121 +218,62 @@ jobs:
       - run: pytest tests/ || true
 
   # ─────────────────────────────
-  # Job 2: Train
+  # Job 2: Train & Register
   # ─────────────────────────────
-  # train:
-  #   runs-on: ubuntu-latest
-  #   needs: test
-  #   steps:
-  #     - uses: actions/checkout@v4
+  train:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+      DATA_VERSION: "1"
+      MODEL_NAME: ${{ env.MODEL_NAME }}
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-  #     - name: Login to Azure
-  #       uses: azure/login@v1
-  #       with:
-  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
+      # ✅ Azure Login
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-  #     - name: Verify Azure login
-  #       run: az account show
+      # ✅ Verify Azure login
+      - name: Verify Azure login
+        run: az account show
 
-  #     - name: Debug secrets
-  #       env:
-  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  #         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  #         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-  #         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-  #       run: |
-  #         echo "TENANT_ID length:       ${#AZURE_TENANT_ID}"
-  #         echo "CLIENT_ID length:       ${#AZURE_CLIENT_ID}"
-  #         echo "CLIENT_SECRET length:   ${#AZURE_CLIENT_SECRET}"
-  #         echo "SUBSCRIPTION_ID length: ${#AZURE_SUBSCRIPTION_ID}"
-  #         echo "RESOURCE_GROUP:         $AZURE_RESOURCE_GROUP"
-  #         echo "WORKSPACE:              $AZURE_ML_WORKSPACE"
+      # 🚀 Submit Azure ML Training
+      - name: Submit Azure ML Training
+        run: python pipelines/submit_pipeline.py
 
-  #     - name: Submit Azure ML Training
-  #       env:
-  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  #         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  #         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-  #         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-  #         DATA_VERSION: "1"
-  #       run: python pipelines/submit_pipeline.py
+      # 🚀 Register model
+      - name: Register Model
+        run: python pipelines/register_model.py --model_name ${{ env.MODEL_NAME }}
 
-  #     - name: Register Model
-  #       env:
-  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  #         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  #         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-  #         AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-  #       run: |
-  #         python pipelines/register_model.py \
-  #           --model_name ${{ env.MODEL_NAME }}
+      # Upload outputs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: outputs
+          path: outputs/
 
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: outputs
-  #         path: outputs/
-
-# ─────────────────────────────
-# Job 2: Train
-# ─────────────────────────────
-train:
-  runs-on: ubuntu-latest
-  needs: test
-
-  steps:
-    - uses: actions/checkout@v4
-
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-
-    # ✅ Azure Login using single secret
-    - name: Login to Azure
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    # ✅ Verify login (keep this)
-    - name: Verify Azure login
-      run: az account show
-
-    # 🚀 Submit training pipeline
-    - name: Submit Azure ML Training
-      env:
-        DATA_VERSION: "1"
-      run: python pipelines/submit_pipeline.py
-
-    # 🚀 Register model
-    - name: Register Model
-      run: |
-        python pipelines/register_model.py \
-          --model_name ${{ env.MODEL_NAME }}
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: outputs
-        path: outputs/
   # ─────────────────────────────
   # Job 3: Deploy
   # ─────────────────────────────
   deploy:
     runs-on: ubuntu-latest
     needs: train
+    env:
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -156,23 +282,28 @@ train:
           name: outputs
           path: outputs/
 
+      # Login to Azure
       - name: Login to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # Login to Azure Container Registry
       - uses: azure/docker-login@v2
         with:
           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - run: |
+      # Build & Push Docker image
+      - name: Build & Push Docker image
+        run: |
           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:${{ github.sha }}
           docker build -t $IMAGE .
           docker push $IMAGE
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
+      # Deploy to Azure Container Instance
       - uses: azure/aci-deploy@v1
         with:
           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
