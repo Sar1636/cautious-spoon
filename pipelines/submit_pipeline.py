@@ -376,8 +376,8 @@ def ensure_data_asset(client):
 
     log(f"Uploading dataset from {csv_path}...")
     data = Data(
-        name=DATA_ASSET,
-        version=DATA_VERSION,
+        name=str(DATA_ASSET),
+        version=str(DATA_VERSION),
         path=str(csv_path),
         type=AssetTypes.URI_FILE,
         description="Japan pizza delivery dataset",
@@ -466,7 +466,7 @@ def register_model_after_job(client, job_name):
 # ── Args ──────────────────────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment", default="edt-model-training")
+    parser.add_argument("--experiment", default=EXPERIMENT)
     parser.add_argument("--no_wait", action="store_true")
     return parser.parse_args()
 

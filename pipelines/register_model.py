@@ -101,20 +101,36 @@ from azure.ai.ml import MLClient
 from azure.ai.ml.entities import Model
 from azure.ai.ml.constants import AssetTypes
 
+# ── Arguments ─────────────────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", default="outputs/edt_model.pkl")
-    parser.add_argument("--model_name", default="edt-model-japan")
-    parser.add_argument("--description", default="EDT model for Japan pizza delivery")
+    parser.add_argument(
+        "--model_path",
+        default="outputs/edt_model.pkl",
+        help="Path to the trained model file or folder"
+    )
+    parser.add_argument(
+        "--model_name",
+        default="edt-model-japan",
+        help="Name to register the model under in Azure ML"
+    )
+    parser.add_argument(
+        "--description",
+        default="EDT model for Japan pizza delivery",
+        help="Description for the registered model"
+    )
     return parser.parse_args()
 
+# ── Azure ML Client ───────────────────────────────────────────────────
 def get_ml_client():
     subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID")
     resource_group  = os.environ.get("AZURE_RESOURCE_GROUP")
     workspace_name  = os.environ.get("AZURE_ML_WORKSPACE")
 
     if not subscription_id or not resource_group or not workspace_name:
-        raise ValueError("AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, and AZURE_ML_WORKSPACE must be set")
+        raise ValueError(
+            "AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, and AZURE_ML_WORKSPACE must be set"
+        )
 
     credential = DefaultAzureCredential()
 
@@ -124,9 +140,11 @@ def get_ml_client():
         resource_group_name=resource_group,
         workspace_name=workspace_name,
     )
-    print(f"Connected: workspace={client.workspace_name}")
+
+    print(f"Connected to workspace: {client.workspace_name}")
     return client
 
+# ── Main ─────────────────────────────────────────────────────────────
 def main():
     args = parse_args()
     client = get_ml_client()
@@ -137,11 +155,18 @@ def main():
         name=args.model_name,
         description=args.description,
         type=AssetTypes.CUSTOM_MODEL,
-        tags={"market": "japan", "task": "regression", "framework": "scikit-learn"},
+        tags={
+            "market": "japan",
+            "task": "regression",
+            "framework": "scikit-learn"
+        },
     )
 
     registered = client.models.create_or_update(model)
-    print(f"✅ Model registered: {registered.name}, version {registered.version}")
+    print(f"✅ Model registered successfully!")
+    print(f"   Name    : {registered.name}")
+    print(f"   Version : {registered.version}")
+    print(f"   ID      : {registered.id}")
 
 if __name__ == "__main__":
     main()
