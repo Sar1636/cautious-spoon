@@ -290,12 +290,14 @@
 
 # if __name__ == "__main__":
 #     main()
-
 """
 submit_pipeline.py
 ------------------
 Submits the EDT training pipeline to Azure ML.
-All credentials are read from environment variables via DefaultAzureCredential.
+
+Authentication:
+  - GitHub Actions : WorkloadIdentityCredential (federated OIDC — no client secret)
+  - Local dev      : DefaultAzureCredential fallback (az login / env vars)
 """
 
 import os
@@ -304,7 +306,7 @@ import time
 import argparse
 from pathlib import Path
 
-from azure.identity import DefaultAzureCredential
+from azure.identity import WorkloadIdentityCredential, DefaultAzureCredential
 from azure.ai.ml import MLClient, command, Input, Output, dsl
 from azure.ai.ml.entities import Environment, AmlCompute, Model, Data
 from azure.ai.ml.constants import AssetTypes
@@ -345,17 +347,38 @@ def with_retry(fn, label):
             log(f"! {label} attempt {attempt}/{MAX_RETRIES} failed — retrying in {RETRY_DELAY_S}s...")
             time.sleep(RETRY_DELAY_S)
 
+# ── Credential ────────────────────────────────────────────────────────
+def get_credential():
+    """
+    In GitHub Actions, azure/login@v2 sets AZURE_CLIENT_ID, AZURE_TENANT_ID,
+    and AZURE_FEDERATED_TOKEN_FILE automatically when using federated credentials.
+    WorkloadIdentityCredential reads those env vars directly — no client secret needed.
+
+    Locally, falls back to DefaultAzureCredential (picks up az login or env vars).
+    """
+    client_id  = os.environ.get("AZURE_CLIENT_ID")
+    tenant_id  = os.environ.get("AZURE_TENANT_ID")
+    token_file = os.environ.get("AZURE_FEDERATED_TOKEN_FILE")
+
+    if client_id and tenant_id and token_file:
+        log("Auth: WorkloadIdentityCredential (federated OIDC)")
+        return WorkloadIdentityCredential(
+            client_id=client_id,
+            tenant_id=tenant_id,
+        )
+
+    log("Auth: DefaultAzureCredential (local fallback)")
+    return DefaultAzureCredential()
+
 # ── Azure ML Client ───────────────────────────────────────────────────
 def get_ml_client():
     log_section("Azure ML Client")
 
-    # Read and validate env vars
     required = {
         "AZURE_SUBSCRIPTION_ID": os.environ.get("AZURE_SUBSCRIPTION_ID"),
         "AZURE_RESOURCE_GROUP":  os.environ.get("AZURE_RESOURCE_GROUP"),
         "AZURE_ML_WORKSPACE":    os.environ.get("AZURE_ML_WORKSPACE"),
     }
-
     missing = [k for k, v in required.items() if not v]
     if missing:
         log("X Missing required environment variables:")
@@ -363,25 +386,19 @@ def get_ml_client():
             log(f"    - {var} is {'empty' if var in os.environ else 'not set'}")
         log("")
         log("  Fix: add these as GitHub repository secrets:")
-        log("  Settings → Secrets and variables → Actions → New repository secret")
+        log("  Settings -> Secrets and variables -> Actions -> New repository secret")
         raise ValueError(f"Missing env vars: {', '.join(missing)}")
 
     subscription_id = required["AZURE_SUBSCRIPTION_ID"]
     resource_group  = required["AZURE_RESOURCE_GROUP"]
     workspace_name  = required["AZURE_ML_WORKSPACE"]
 
-    log(f"Subscription : {subscription_id}")
+    log(f"Subscription  : {subscription_id}")
     log(f"Resource group: {resource_group}")
-    log(f"Workspace    : {workspace_name}")
-
-    log("Authenticating with DefaultAzureCredential...")
-    try:
-        credential = DefaultAzureCredential()
-    except Exception as e:
-        log(f"X Authentication failed: {e}")
-        raise
+    log(f"Workspace     : {workspace_name}")
 
     try:
+        credential = get_credential()
         client = MLClient(
             credential=credential,
             subscription_id=subscription_id,
@@ -391,7 +408,7 @@ def get_ml_client():
         log(f"Connected: workspace={client.workspace_name} RG={client.resource_group_name}")
         return client
     except Exception as e:
-        log(f"X Failed to create MLClient: {e}")
+        log(f"X Failed to connect to Azure ML: {e}")
         raise
 
 # ── Dataset upload ────────────────────────────────────────────────────
@@ -409,7 +426,7 @@ def ensure_data_asset(client):
         log(f"Dataset already registered: {existing.name}:{existing.version}")
         return f"azureml:{DATA_ASSET}:{DATA_VERSION}"
     except ResourceNotFoundError:
-        log(f"Dataset not found — uploading...")
+        log("Dataset not found — uploading...")
 
     data = Data(
         name=str(DATA_ASSET),
@@ -534,11 +551,11 @@ def parse_args():
 # ── Main ──────────────────────────────────────────────────────────────
 def main():
     log_section("EDT Training Pipeline Submission")
-    args     = parse_args()
-    client   = get_ml_client()
-    data_path = ensure_data_asset(client)
-    compute  = ensure_compute(client)
-    env      = ensure_environment(client)
+    args         = parse_args()
+    client       = get_ml_client()
+    data_path    = ensure_data_asset(client)
+    compute      = ensure_compute(client)
+    env          = ensure_environment(client)
     pipeline_job = build_pipeline(data_path, compute, env)
 
     log_section("Submitting Pipeline")
