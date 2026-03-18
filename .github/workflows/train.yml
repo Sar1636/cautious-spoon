@@ -310,7 +310,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Azure OIDC authentication (no client secret needed)
+      # Azure OIDC login
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -368,7 +368,7 @@ jobs:
           name: training-outputs-${{ github.run_id }}
           path: outputs/
 
-      # Azure OIDC authentication
+      # Azure OIDC login
       - name: Login to Azure
         uses: azure/login@v2
         with:
