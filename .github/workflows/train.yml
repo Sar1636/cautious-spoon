@@ -618,36 +618,49 @@ permissions:
 
 jobs:
   # ─────────────────────────────
-  # Job 1: Test
+  # Job: Test & Validation
   # ─────────────────────────────
   test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      # Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # Cache dependencies
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
+      # Install dependencies
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest flake8
 
-      - name: Lint
+      # Lint code
+      - name: Lint (flake8)
         run: flake8 src/ api/ pipelines/ --max-line-length=200
 
+      # Quick training sanity check
       - name: Train smoke test
         run: python src/train.py --data japan_pizza_delivery.csv --output outputs/
 
+      # Run unit tests
       - name: Run tests
-        run: pytest tests/
+        run: pytest tests/ --maxfail=1 --disable-warnings -q
 
   # ─────────────────────────────
   # Job 2: Train
