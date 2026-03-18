@@ -442,6 +442,164 @@
 #           ports: 8000
 #           azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
 
+# name: EDT Model Training Pipeline
+
+# on:
+#   push:
+#     branches: [main]
+#   workflow_dispatch:
+
+# env:
+#   PYTHON_VERSION: "3.10"
+#   MODEL_NAME: "edt-model-japan"
+
+# # Required for OIDC federated login — no client secret needed
+# permissions:
+#   id-token: write
+#   contents: read
+
+# jobs:
+#   # ─────────────────────────────
+#   # Job 1: Test
+#   # ─────────────────────────────
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: ${{ env.PYTHON_VERSION }}
+
+#       - name: Cache pip dependencies
+#         uses: actions/cache@v4
+#         with:
+#           path: ~/.cache/pip
+#           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+#       - name: Install dependencies
+#         run: |
+#           pip install -r requirements.txt
+#           pip install pytest flake8
+
+#       - name: Lint
+#         run: flake8 src/ api/ pipelines/ --max-line-length=200
+
+#       - name: Train smoke test
+#         run: python src/train.py --data japan_pizza_delivery.csv --output outputs/
+
+#       - name: Run tests
+#         run: pytest tests/
+
+#   # ─────────────────────────────
+#   # Job 2: Train
+#   # ─────────────────────────────
+#   train:
+#     runs-on: ubuntu-latest
+#     needs: test
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: ${{ env.PYTHON_VERSION }}
+
+#       - name: Cache pip dependencies
+#         uses: actions/cache@v4
+#         with:
+#           path: ~/.cache/pip
+#           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+#       - name: Install dependencies
+#         run: pip install -r requirements.txt
+
+#       # Federated OIDC login — no client secret, uses short-lived token
+#       - name: Login to Azure
+#         uses: azure/login@v2
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - name: Verify Azure login
+#         run: az account show
+
+#       - name: Submit Azure ML Training
+#         env:
+#           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#           # Tells DefaultAzureCredential to pick up the OIDC token from azure/login
+#           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#           DATA_VERSION: "1"
+#         run: python pipelines/submit_pipeline.py
+
+#       - name: Register Model
+#         env:
+#           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
+#           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#         run: |
+#           python pipelines/register_model.py \
+#             --model_name ${{ env.MODEL_NAME }}
+
+#       - uses: actions/upload-artifact@v4
+#         with:
+#           name: outputs
+#           path: outputs/
+
+#   # ─────────────────────────────
+#   # Job 3: Deploy
+#   # ─────────────────────────────
+#   deploy:
+#     runs-on: ubuntu-latest
+#     needs: train
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/download-artifact@v4
+#         with:
+#           name: outputs
+#           path: outputs/
+
+#       # Federated OIDC login
+#       - name: Login to Azure
+#         uses: azure/login@v2
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       # ACR login via Azure CLI — no separate username/password secret needed
+#       - name: Login to ACR
+#         run: az acr login --name ${{ secrets.ACR_NAME }}
+
+#       - name: Build & push Docker image
+#         run: |
+#           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:${{ github.sha }}
+#           LATEST=${{ secrets.ACR_LOGIN_SERVER }}/edt-api:latest
+#           docker build -t $IMAGE -t $LATEST .
+#           docker push $IMAGE
+#           docker push $LATEST
+#           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+#       - name: Deploy to Azure Container Instance
+#         uses: azure/aci-deploy@v1
+#         with:
+#           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#           name: edt-api
+#           image: ${{ env.IMAGE }}
+#           dns-name-label: edt-api
+#           location: japaneast
+#           ports: 8000
+#           registry-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+#           registry-username: ${{ secrets.ACR_USERNAME }}
+#           registry-password: ${{ secrets.ACR_PASSWORD }}
+#           azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
 name: EDT Model Training Pipeline
 
 on:
@@ -513,6 +671,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Debug: print the exact subject GitHub will use for the OIDC token
+      # Use this to verify it matches your federated credential subject in Azure
+      - name: Debug OIDC subject
+        run: |
+          echo "Repository : ${{ github.repository }}"
+          echo "Ref        : ${{ github.ref }}"
+          echo "Event      : ${{ github.event_name }}"
+          echo "Expected subject for push:"
+          echo "  repo:${{ github.repository }}:ref:${{ github.ref }}"
+          echo "Expected subject for workflow_dispatch:"
+          echo "  repo:${{ github.repository }}:ref:refs/heads/main"
+
       # Federated OIDC login — no client secret, uses short-lived token
       - name: Login to Azure
         uses: azure/login@v2
@@ -529,7 +699,6 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
           AZURE_ML_WORKSPACE: ${{ secrets.AZURE_ML_WORKSPACE }}
-          # Tells DefaultAzureCredential to pick up the OIDC token from azure/login
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           DATA_VERSION: "1"
@@ -573,7 +742,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ACR login via Azure CLI — no separate username/password secret needed
+      # ACR login via Azure CLI — no separate username/password needed
       - name: Login to ACR
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
