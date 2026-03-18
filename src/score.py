@@ -151,3 +151,4 @@ def run(raw_data: str) -> str:
     else:
         results = predict(data)
     return json.dumps(results)
+

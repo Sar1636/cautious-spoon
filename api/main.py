@@ -287,3 +287,4 @@ def predict_batch_endpoint(request: BatchRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
